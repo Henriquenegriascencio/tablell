@@ -1,0 +1,2660 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tablell - Gestão de Vendas, Comandas & Balanço Financeiro</title>
+    <meta name="description" content="Sistema autônomo Tablell de controle de comandas, fiados por data, despesas e balanço financeiro com sincronização Supabase ao vivo." />
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+              mono: ['"JetBrains Mono"', 'monospace'],
+            },
+          },
+        },
+      };
+    </script>
+    
+    <!-- React 18 & ReactDOM CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel Standalone CDN -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+      body {
+        margin: 0;
+        background-color: #090c13;
+        color: #f1f5f9;
+        font-family: 'Plus Jakarta Sans', sans-serif;
+      }
+      /* Custom dark scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #090c13;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #1e2638;
+        border-radius: 9999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #334155;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+      const { useState, useEffect, useMemo, useCallback, useRef } = React;
+
+      // --- FORMATTERS ---
+      function formatCurrency(val) {
+        const num = Number(val) || 0;
+        return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      }
+
+      function formatDate(isoStr) {
+        if (!isoStr) return '';
+        try {
+          const d = new Date(isoStr);
+          return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        } catch {
+          return isoStr;
+        }
+      }
+
+      function formatPaymentLabel(method) {
+        switch (method) {
+          case 'pix': return 'PIX';
+          case 'dinheiro': return 'Dinheiro';
+          case 'cartao': return 'Cartão';
+          default: return method ? String(method).toUpperCase() : 'Não especificado';
+        }
+      }
+
+      // --- INLINE SVG ICONS (100% Reliable & Zero Dependency) ---
+      const Icon = {
+        Package: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>,
+        Users: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+        Receipt: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>,
+        DollarSign: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+        TrendingUp: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>,
+        FileText: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>,
+        ShoppingBag: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>,
+        History: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg>,
+        Database: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>,
+        RefreshCw: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>,
+        UploadCloud: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m16 16-4-4-4 4"/><path d="M12 12v9"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/><path d="m16 16-4-4-4 4"/></svg>,
+        DownloadCloud: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></svg>,
+        RotateCcw: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>,
+        Trash: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>,
+        Edit: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>,
+        Plus: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>,
+        Check: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>,
+        CheckCircle: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>,
+        AlertTriangle: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>,
+        AlertCircle: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>,
+        X: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>,
+        MessageSquare: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+        ShieldCheck: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>,
+        Tag: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><circle cx="7" cy="7" r=".5" fill="currentColor"/></svg>,
+        Download: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
+        Copy: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>,
+        Code: (props) => <svg className={props.className || "w-4 h-4"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>,
+      };
+
+      // --- CONFIG & DEFAULTS ---
+      const DEFAULT_SUPABASE_CONFIG = {
+        url: 'https://srfnlbapjlbijeqmndgq.supabase.co',
+        anon_key: 'sb_publishable_D2LR0mI5M2prIx8Vad670g_ir6CS0sH',
+        is_connected: true,
+      };
+
+      const STORAGE_KEYS = {
+        PRODUCTS: 'tablell_products',
+        CUSTOMERS: 'tablell_customers',
+        COMANDAS: 'tablell_comandas',
+        EXPENSES: 'tablell_expenses',
+        PAYMENTS: 'tablell_payments',
+        CONFIG: 'tablell_supabase_config',
+      };
+
+      const INITIAL_PRODUCTS = [
+        { id: 'prod-1', nome: 'Cerveja Lata', preco_custo: 2.50, preco_venda: 6.00, categoria: 'Bebidas' },
+        { id: 'prod-2', nome: 'Espetinho', preco_custo: 4.00, preco_venda: 10.00, categoria: 'Espetos' },
+        { id: 'prod-3', nome: 'Refrigerante', preco_custo: 2.00, preco_venda: 5.00, categoria: 'Bebidas' },
+        { id: 'prod-4', nome: 'Água Mineral', preco_custo: 1.20, preco_venda: 4.00, categoria: 'Bebidas' },
+        { id: 'prod-5', nome: 'Pastel Frito', preco_custo: 3.50, preco_venda: 9.00, categoria: 'Salgados' },
+      ];
+
+      const INITIAL_CUSTOMERS = [
+        { id: 'cust-1', nome: 'João', avatar: '😎', telefone: '11987654321' },
+        { id: 'cust-2', nome: 'Maria', avatar: '🐮', telefone: '11991234567' },
+        { id: 'cust-3', nome: 'Lucas', avatar: '🍻', telefone: '11976543210' },
+        { id: 'cust-4', nome: 'Bruno Silva', avatar: '⚽', telefone: '11988887777' },
+      ];
+
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      const INITIAL_EXPENSES = [
+        { id: 'exp-1', descricao: 'Fardo Cerveja 12un / Carvão', valor: 75.00, data: todayStr, categoria: 'Bebidas/Insumos' },
+        { id: 'exp-2', descricao: 'Carnes e temperos para espetinhos', valor: 80.00, data: todayStr, categoria: 'Carnes/Carvão' },
+      ];
+
+      const INITIAL_COMANDAS = [
+        {
+          id: 'cmd-1',
+          cliente_id: 'cust-1',
+          cliente_nome: 'João',
+          data_evento: todayStr,
+          produto_id: 'prod-1',
+          produto_nome: 'Cerveja Lata',
+          quantidade: 3,
+          preco_unitario: 6.00,
+          preco_custo: 2.50,
+          subtotal: 18.00,
+          status: 'pendente',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'cmd-2',
+          cliente_id: 'cust-1',
+          cliente_nome: 'João',
+          data_evento: todayStr,
+          produto_id: 'prod-2',
+          produto_nome: 'Espetinho',
+          quantidade: 2,
+          preco_unitario: 10.00,
+          preco_custo: 4.00,
+          subtotal: 20.00,
+          status: 'pendente',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: 'cmd-3',
+          cliente_id: 'cust-2',
+          cliente_nome: 'Maria',
+          data_evento: todayStr,
+          produto_id: 'prod-3',
+          produto_nome: 'Refrigerante',
+          quantidade: 2,
+          preco_unitario: 5.00,
+          preco_custo: 2.00,
+          subtotal: 10.00,
+          status: 'pago',
+          forma_pagamento: 'pix',
+          created_at: new Date().toISOString(),
+        },
+      ];
+
+      const INITIAL_PAYMENTS = [
+        {
+          id: 'pay-1',
+          cliente_id: 'cust-2',
+          cliente_nome: 'Maria',
+          data_hora: new Date().toISOString(),
+          valor: 10.00,
+          forma_pagamento: 'pix',
+          data_evento: todayStr,
+          observacoes: 'Acerto imediato via Pix',
+        },
+      ];
+
+      // --- LOCAL STORAGE SERVICE ---
+      const storageService = {
+        setProducts(products) {
+          const sanitized = products.map(p => ({
+            ...p,
+            categoria: p.categoria || 'Geral',
+            preco_custo: Number(p.preco_custo) || 0,
+            preco_venda: Number(p.preco_venda) || 0,
+          }));
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(sanitized));
+        },
+        getProducts() {
+          const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+          if (data === null) {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
+            return INITIAL_PRODUCTS;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            return parsed.map(p => ({
+              ...p,
+              categoria: p.categoria || 'Geral',
+              preco_custo: Number(p.preco_custo) || 0,
+              preco_venda: Number(p.preco_venda) || 0,
+            }));
+          } catch {
+            return [];
+          }
+        },
+        saveProduct(product) {
+          const sanitized = {
+            ...product,
+            categoria: product.categoria?.trim() || 'Geral',
+          };
+          const list = this.getProducts();
+          const idx = list.findIndex(p => p.id === sanitized.id);
+          if (idx >= 0) list[idx] = sanitized;
+          else list.push(sanitized);
+          this.setProducts(list);
+          return list;
+        },
+        deleteProduct(id) {
+          const list = this.getProducts().filter(p => p.id !== id);
+          this.setProducts(list);
+          return list;
+        },
+
+        setCustomers(customers) {
+          const sanitized = customers.map(c => ({
+            ...c,
+            avatar: c.avatar || '😎',
+          }));
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(sanitized));
+        },
+        getCustomers() {
+          const data = localStorage.getItem(STORAGE_KEYS.CUSTOMERS);
+          if (data === null) {
+            localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(INITIAL_CUSTOMERS));
+            return INITIAL_CUSTOMERS;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            return parsed.map(c => ({
+              ...c,
+              avatar: c.avatar || '😎',
+            }));
+          } catch {
+            return [];
+          }
+        },
+        saveCustomer(customer) {
+          const list = this.getCustomers();
+          const idx = list.findIndex(c => c.id === customer.id);
+          if (idx >= 0) list[idx] = customer;
+          else list.push(customer);
+          this.setCustomers(list);
+          return list;
+        },
+        deleteCustomer(id) {
+          const list = this.getCustomers().filter(c => c.id !== id);
+          this.setCustomers(list);
+          return list;
+        },
+
+        setComandaItems(items) {
+          localStorage.setItem(STORAGE_KEYS.COMANDAS, JSON.stringify(items));
+        },
+        getComandaItems() {
+          const data = localStorage.getItem(STORAGE_KEYS.COMANDAS);
+          if (data === null) {
+            localStorage.setItem(STORAGE_KEYS.COMANDAS, JSON.stringify(INITIAL_COMANDAS));
+            return INITIAL_COMANDAS;
+          }
+          try {
+            return JSON.parse(data);
+          } catch {
+            return [];
+          }
+        },
+        addComandaItems(items) {
+          const list = this.getComandaItems();
+          list.push(...items);
+          this.setComandaItems(list);
+          return list;
+        },
+        settleComandaItems(clienteId, dataEvento, formaPagamento = 'pix') {
+          const list = this.getComandaItems();
+          let settledAmount = 0;
+          list.forEach(item => {
+            if (item.cliente_id === clienteId && item.status === 'pendente') {
+              if (!dataEvento || item.data_evento === dataEvento) {
+                item.status = 'pago';
+                item.forma_pagamento = formaPagamento;
+                settledAmount += item.subtotal;
+              }
+            }
+          });
+          this.setComandaItems(list);
+
+          if (settledAmount > 0) {
+            const customer = this.getCustomers().find(c => c.id === clienteId);
+            this.addPayment({
+              id: 'pay-' + Date.now(),
+              cliente_id: clienteId,
+              cliente_nome: customer ? customer.nome : 'Amigo',
+              data_hora: new Date().toISOString(),
+              valor: settledAmount,
+              forma_pagamento: formaPagamento,
+              data_evento: dataEvento,
+              observacoes: dataEvento ? 'Acerto de fiado do evento ' + dataEvento : 'Acerto total de fiados acumulados',
+            });
+          }
+          return { updated: list, settledAmount };
+        },
+
+        setExpenses(expenses) {
+          const sanitized = expenses.map(e => ({
+            ...e,
+            categoria: e.categoria || 'Insumos',
+          }));
+          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(sanitized));
+        },
+        getExpenses() {
+          const data = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+          if (data === null) {
+            localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(INITIAL_EXPENSES));
+            return INITIAL_EXPENSES;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            return parsed.map(e => ({
+              ...e,
+              categoria: e.categoria || 'Insumos',
+              valor: Number(e.valor) || 0,
+            }));
+          } catch {
+            return [];
+          }
+        },
+        addExpense(expense) {
+          const sanitized = {
+            ...expense,
+            categoria: expense.categoria?.trim() || 'Insumos',
+          };
+          const list = this.getExpenses();
+          list.unshift(sanitized);
+          this.setExpenses(list);
+          return list;
+        },
+        deleteExpense(id) {
+          const list = this.getExpenses().filter(e => e.id !== id);
+          this.setExpenses(list);
+          return list;
+        },
+
+        setPayments(payments) {
+          localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(payments));
+        },
+        getPayments() {
+          const data = localStorage.getItem(STORAGE_KEYS.PAYMENTS);
+          if (data === null) {
+            localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(INITIAL_PAYMENTS));
+            return INITIAL_PAYMENTS;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            return parsed.map(p => ({
+              ...p,
+              valor: Number(p.valor) || 0,
+              forma_pagamento: p.forma_pagamento || 'pix',
+            }));
+          } catch {
+            return [];
+          }
+        },
+        addPayment(payment) {
+          const list = this.getPayments();
+          list.unshift(payment);
+          this.setPayments(list);
+          return list;
+        },
+        deletePayment(id) {
+          const list = this.getPayments().filter(p => p.id !== id);
+          this.setPayments(list);
+          return list;
+        },
+
+        getConfig() {
+          const data = localStorage.getItem(STORAGE_KEYS.CONFIG);
+          if (!data) {
+            localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(DEFAULT_SUPABASE_CONFIG));
+            return DEFAULT_SUPABASE_CONFIG;
+          }
+          try {
+            const parsed = JSON.parse(data);
+            if (!parsed.url || !parsed.anon_key) return DEFAULT_SUPABASE_CONFIG;
+            return parsed;
+          } catch {
+            return DEFAULT_SUPABASE_CONFIG;
+          }
+        },
+        saveConfig(config) {
+          localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(config));
+        },
+        resetAllToDemo() {
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(INITIAL_PRODUCTS));
+          localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(INITIAL_CUSTOMERS));
+          localStorage.setItem(STORAGE_KEYS.COMANDAS, JSON.stringify(INITIAL_COMANDAS));
+          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(INITIAL_EXPENSES));
+          localStorage.setItem(STORAGE_KEYS.PAYMENTS, JSON.stringify(INITIAL_PAYMENTS));
+          localStorage.setItem(STORAGE_KEYS.CONFIG, JSON.stringify(DEFAULT_SUPABASE_CONFIG));
+        },
+        exportBackupJSON() {
+          const backup = {
+            version: '3.0.0',
+            exported_at: new Date().toISOString(),
+            products: this.getProducts(),
+            customers: this.getCustomers(),
+            comandas: this.getComandaItems(),
+            expenses: this.getExpenses(),
+            payments: this.getPayments(),
+          };
+          return JSON.stringify(backup, null, 2);
+        },
+        importBackupJSON(jsonStr) {
+          try {
+            const data = JSON.parse(jsonStr);
+            if (Array.isArray(data.products)) this.setProducts(data.products);
+            if (Array.isArray(data.customers)) this.setCustomers(data.customers);
+            if (Array.isArray(data.comandas)) this.setComandaItems(data.comandas);
+            if (Array.isArray(data.expenses)) this.setExpenses(data.expenses);
+            if (Array.isArray(data.payments)) this.setPayments(data.payments);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+      };
+
+      // --- SUPABASE CLIENT SERVICE ---
+      let clientInstance = null;
+      let currentUrl = '';
+      let currentKey = '';
+      let activeChannel = null;
+
+      function getClient(url, key) {
+        const config = storageService.getConfig();
+        const targetUrl = url || config.url || DEFAULT_SUPABASE_CONFIG.url;
+        const targetKey = key || config.anon_key || DEFAULT_SUPABASE_CONFIG.anon_key;
+
+        if (!targetUrl || !targetKey || !window.supabase) return null;
+
+        if (!clientInstance || currentUrl !== targetUrl || currentKey !== targetKey) {
+          try {
+            clientInstance = window.supabase.createClient(targetUrl, targetKey);
+            currentUrl = targetUrl;
+            currentKey = targetKey;
+          } catch (err) {
+            console.error('Falha ao inicializar cliente Supabase:', err);
+            return null;
+          }
+        }
+        return clientInstance;
+      }
+
+      async function testConnection(url, key) {
+        const targetUrl = url || DEFAULT_SUPABASE_CONFIG.url;
+        const targetKey = key || DEFAULT_SUPABASE_CONFIG.anon_key;
+        if (!targetUrl || !targetKey || !window.supabase) {
+          return { success: false, message: 'URL e Chave Anon são obrigatórias.' };
+        }
+        const startTime = performance.now();
+        try {
+          const tempClient = window.supabase.createClient(targetUrl, targetKey);
+          const tables = ['products', 'customers', 'comanda_items', 'expenses', 'payments'];
+          const missingTables = [];
+          const results = await Promise.all(tables.map(tbl => tempClient.from(tbl).select('id').limit(1)));
+          const latencyMs = Math.round(performance.now() - startTime);
+
+          results.forEach((res, index) => {
+            if (res.error) {
+              const msg = res.error.message || '';
+              if (res.error.code === 'PGRST204' || res.error.code === '42P01' || msg.includes('does not exist') || msg.includes('schema cache')) {
+                missingTables.push(tables[index]);
+              }
+            }
+          });
+
+          if (missingTables.length > 0) {
+            return {
+              success: true,
+              latencyMs,
+              message: 'Conectado ao projeto (' + latencyMs + 'ms)! Nota: As seguintes tabelas não existem: ' + missingTables.join(', ') + '. Execute o script SQL no Supabase.',
+            };
+          }
+          return {
+            success: true,
+            latencyMs,
+            message: 'Conexão 100% estabelecida e ativa com todas as 5 tabelas respondendo em ' + latencyMs + 'ms!',
+          };
+        } catch (err) {
+          return { success: false, message: 'Falha na conexão: ' + (err.message || String(err)) };
+        }
+      }
+
+      async function pullAllFromSupabase() {
+        const client = getClient();
+        if (!client) return { success: false, error: 'Supabase não conectado.' };
+
+        try {
+          const [prodRes, custRes, cmdRes, expRes, payRes] = await Promise.all([
+            client.from('products').select('*'),
+            client.from('customers').select('*'),
+            client.from('comanda_items').select('*'),
+            client.from('expenses').select('*'),
+            client.from('payments').select('*'),
+          ]);
+
+          let updatedCount = 0;
+          if (!prodRes.error && Array.isArray(prodRes.data)) {
+            storageService.setProducts(prodRes.data);
+            updatedCount++;
+          }
+          if (!custRes.error && Array.isArray(custRes.data)) {
+            storageService.setCustomers(custRes.data);
+            updatedCount++;
+          }
+          if (!cmdRes.error && Array.isArray(cmdRes.data)) {
+            storageService.setComandaItems(cmdRes.data);
+            updatedCount++;
+          }
+          if (!expRes.error && Array.isArray(expRes.data)) {
+            storageService.setExpenses(expRes.data);
+            updatedCount++;
+          }
+          if (!payRes.error && Array.isArray(payRes.data)) {
+            storageService.setPayments(payRes.data);
+            updatedCount++;
+          }
+
+          if (updatedCount > 0) {
+            const config = storageService.getConfig();
+            config.is_connected = true;
+            config.last_sync = new Date().toISOString();
+            storageService.saveConfig(config);
+          }
+
+          return {
+            success: true,
+            products: storageService.getProducts(),
+            customers: storageService.getCustomers(),
+            comandas: storageService.getComandaItems(),
+            expenses: storageService.getExpenses(),
+            payments: storageService.getPayments(),
+          };
+        } catch (err) {
+          return { success: false, error: err.message || String(err) };
+        }
+      }
+
+      async function deleteFromSupabase(table, id) {
+        const client = getClient();
+        if (!client) return { success: false, error: 'Supabase não inicializado.' };
+        try {
+          const { error } = await client.from(table).delete().eq('id', id);
+          if (error) return { success: false, error: error.message };
+          return { success: true };
+        } catch (err) {
+          return { success: false, error: err.message || String(err) };
+        }
+      }
+
+      async function upsertToSupabase(table, recordOrRecords) {
+        const client = getClient();
+        if (!client) return { success: false, error: 'Supabase não inicializado.' };
+
+        try {
+          const rawList = Array.isArray(recordOrRecords) ? recordOrRecords : [recordOrRecords];
+          if (rawList.length === 0) return { success: true };
+
+          let recordsPayload = rawList;
+
+          if (table === 'products') {
+            recordsPayload = rawList.map(r => ({
+              id: String(r.id),
+              nome: String(r.nome || 'Produto'),
+              preco_custo: Number(r.preco_custo) || 0,
+              preco_venda: Number(r.preco_venda) || 0,
+              categoria: String(r.categoria || 'Geral'),
+            }));
+          } else if (table === 'customers') {
+            recordsPayload = rawList.map(r => ({
+              id: String(r.id),
+              nome: String(r.nome || 'Amigo'),
+              avatar: String(r.avatar || '😎'),
+              telefone: r.telefone ? String(r.telefone) : null,
+              data_cadastro: r.data_cadastro || new Date().toISOString(),
+            }));
+          } else if (table === 'comanda_items') {
+            recordsPayload = rawList.map(r => ({
+              id: String(r.id),
+              cliente_id: String(r.cliente_id),
+              cliente_nome: String(r.cliente_nome || 'Amigo'),
+              data_evento: String(r.data_evento || new Date().toISOString().split('T')[0]),
+              produto_id: String(r.produto_id),
+              produto_nome: String(r.produto_nome || 'Item'),
+              quantidade: Number(r.quantidade) || 1,
+              preco_unitario: Number(r.preco_unitario) || 0,
+              preco_custo: Number(r.preco_custo) || 0,
+              subtotal: Number(r.subtotal) || 0,
+              status: String(r.status || 'pendente'),
+              forma_pagamento: r.forma_pagamento ? String(r.forma_pagamento) : null,
+              created_at: r.created_at || new Date().toISOString(),
+            }));
+          } else if (table === 'expenses') {
+            recordsPayload = rawList.map(r => ({
+              id: String(r.id),
+              descricao: String(r.descricao || 'Gasto'),
+              valor: Number(r.valor) || 0,
+              data: String(r.data || new Date().toISOString().split('T')[0]),
+              categoria: String(r.categoria || 'Insumos'),
+              created_at: r.created_at || new Date().toISOString(),
+            }));
+          } else if (table === 'payments') {
+            recordsPayload = rawList.map(r => ({
+              id: String(r.id),
+              cliente_id: String(r.cliente_id),
+              cliente_nome: String(r.cliente_nome || 'Amigo'),
+              data_hora: String(r.data_hora || new Date().toISOString()),
+              valor: Number(r.valor) || 0,
+              forma_pagamento: String(r.forma_pagamento || 'pix'),
+              data_evento: r.data_evento ? String(r.data_evento) : null,
+              observacoes: r.observacoes ? String(r.observacoes) : null,
+            }));
+          }
+
+          let res = await client.from(table).upsert(recordsPayload, { onConflict: 'id' });
+
+          // Auto-adaptation if column is missing on remote table
+          if (res.error && res.error.message.includes("Could not find the '")) {
+            const match = res.error.message.match(/Could not find the '([^']+)' column/i);
+            if (match && match[1]) {
+              const missingCol = match[1];
+              recordsPayload = recordsPayload.map(r => {
+                const copy = { ...r };
+                delete copy[missingCol];
+                return copy;
+              });
+              res = await client.from(table).upsert(recordsPayload, { onConflict: 'id' });
+            }
+          }
+
+          if (res.error) {
+            return { success: false, error: res.error.message };
+          }
+          return { success: true };
+        } catch (err) {
+          return { success: false, error: err.message || String(err) };
+        }
+      }
+
+      async function pushLocalDataToSupabase() {
+        const client = getClient();
+        if (!client) return { success: false, message: 'Supabase não conectado.' };
+
+        try {
+          const products = storageService.getProducts();
+          const customers = storageService.getCustomers();
+          const comandas = storageService.getComandaItems();
+          const expenses = storageService.getExpenses();
+          const payments = storageService.getPayments();
+
+          if (products.length > 0) await upsertToSupabase('products', products);
+          if (customers.length > 0) await upsertToSupabase('customers', customers);
+          if (comandas.length > 0) await upsertToSupabase('comanda_items', comandas);
+          if (expenses.length > 0) await upsertToSupabase('expenses', expenses);
+          if (payments.length > 0) await upsertToSupabase('payments', payments);
+
+          const config = storageService.getConfig();
+          config.is_connected = true;
+          config.last_sync = new Date().toISOString();
+          storageService.saveConfig(config);
+
+          return { success: true, message: 'Sincronização com o Supabase efetuada com sucesso!' };
+        } catch (err) {
+          return { success: false, message: err.message || String(err) };
+        }
+      }
+
+      function subscribeToRealtime(onChange) {
+        const client = getClient();
+        if (!client) return () => {};
+
+        if (activeChannel) {
+          client.removeChannel(activeChannel);
+        }
+
+        const channel = client
+          .channel('tablell-realtime-all')
+          .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => {
+            pullAllFromSupabase().then(() => {
+              onChange();
+            });
+          })
+          .subscribe();
+
+        activeChannel = channel;
+        return () => {
+          if (activeChannel) {
+            client.removeChannel(activeChannel);
+            activeChannel = null;
+          }
+        };
+      }
+
+      function getSupabaseSQLSchema() {
+        return `-- Script SQL DDL Idempotente e Completo para o Tablell no Supabase
+-- Copie e cole na aba "SQL Editor" do seu painel Supabase e clique em "Run"
+
+CREATE TABLE IF NOT EXISTS public.products (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL,
+  preco_custo NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  preco_venda NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  categoria TEXT NOT NULL DEFAULT 'Geral',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.customers (
+  id TEXT PRIMARY KEY,
+  nome TEXT NOT NULL,
+  avatar TEXT NOT NULL DEFAULT '😎',
+  telefone TEXT,
+  data_cadastro TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.comanda_items (
+  id TEXT PRIMARY KEY,
+  cliente_id TEXT REFERENCES public.customers(id) ON DELETE SET NULL,
+  cliente_nome TEXT NOT NULL,
+  data_evento DATE NOT NULL,
+  produto_id TEXT REFERENCES public.products(id) ON DELETE SET NULL,
+  produto_nome TEXT NOT NULL,
+  quantidade INTEGER NOT NULL DEFAULT 1,
+  preco_unitario NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  preco_custo NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  subtotal NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  status TEXT NOT NULL DEFAULT 'pendente',
+  forma_pagamento TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.expenses (
+  id TEXT PRIMARY KEY,
+  descricao TEXT NOT NULL,
+  valor NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  categoria TEXT NOT NULL DEFAULT 'Insumos',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS public.payments (
+  id TEXT PRIMARY KEY,
+  cliente_id TEXT REFERENCES public.customers(id) ON DELETE SET NULL,
+  cliente_nome TEXT NOT NULL,
+  data_hora TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  valor NUMERIC(10,2) NOT NULL DEFAULT 0.00,
+  forma_pagamento TEXT NOT NULL DEFAULT 'pix',
+  data_evento DATE,
+  observacoes TEXT
+);
+
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.customers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.comanda_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.payments ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Acesso total a products" ON public.products;
+CREATE POLICY "Acesso total a products" ON public.products FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acesso total a customers" ON public.customers;
+CREATE POLICY "Acesso total a customers" ON public.customers FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acesso total a comanda_items" ON public.comanda_items;
+CREATE POLICY "Acesso total a comanda_items" ON public.comanda_items FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acesso total a expenses" ON public.expenses;
+CREATE POLICY "Acesso total a expenses" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Acesso total a payments" ON public.payments;
+CREATE POLICY "Acesso total a payments" ON public.payments FOR ALL USING (true) WITH CHECK (true);
+
+DO \$\$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'products') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.products;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'customers') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.customers;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'comanda_items') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.comanda_items;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'expenses') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'payments') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.payments;
+  END IF;
+END \$\$;
+
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS avatar TEXT DEFAULT '😎';
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS telefone TEXT;
+ALTER TABLE public.customers ADD COLUMN IF NOT EXISTS data_cadastro TIMESTAMPTZ DEFAULT NOW();
+
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'Geral';
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS preco_custo NUMERIC(10,2) DEFAULT 0.00;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS preco_venda NUMERIC(10,2) DEFAULT 0.00;
+
+ALTER TABLE public.comanda_items ADD COLUMN IF NOT EXISTS forma_pagamento TEXT;
+ALTER TABLE public.comanda_items ADD COLUMN IF NOT EXISTS preco_custo NUMERIC(10,2) DEFAULT 0.00;
+
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS data_evento DATE;
+ALTER TABLE public.payments ADD COLUMN IF NOT EXISTS observacoes TEXT;
+
+ALTER TABLE public.expenses ADD COLUMN IF NOT EXISTS categoria TEXT DEFAULT 'Insumos';
+
+NOTIFY pgrst, 'reload schema';
+
+CREATE INDEX IF NOT EXISTS idx_comanda_cliente ON public.comanda_items(cliente_id);
+CREATE INDEX IF NOT EXISTS idx_comanda_data ON public.comanda_items(data_evento);
+CREATE INDEX IF NOT EXISTS idx_comanda_status ON public.comanda_items(status);
+`;
+      }
+
+      // --- CONFIRM MODAL COMPONENT ---
+      function ConfirmModal({ isOpen, title, message, confirmLabel = 'Confirmar', cancelLabel = 'Cancelar', variant = 'danger', onConfirm, onCancel }) {
+        if (!isOpen) return null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs">
+            <div className="bg-[#131924] border border-[#1e2638] rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className={"p-2.5 rounded-xl " + (variant === 'danger' ? 'bg-rose-950/80 text-rose-400 border border-rose-800/50' : 'bg-violet-950/80 text-violet-400 border border-violet-800/50')}>
+                    <Icon.AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white tracking-tight">{title}</h3>
+                    <p className="text-xs text-slate-400 mt-1 leading-relaxed">{message}</p>
+                  </div>
+                </div>
+                <button onClick={onCancel} className="p-1 text-slate-400 hover:text-white rounded-lg transition-colors cursor-pointer">
+                  <Icon.X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#1e2638]">
+                <button type="button" onClick={onCancel} className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white bg-[#1a2130] hover:bg-[#222b3e] border border-[#263147] rounded-xl transition-colors cursor-pointer">
+                  {cancelLabel}
+                </button>
+                <button type="button" onClick={onConfirm} className={"px-5 py-2 text-xs font-bold text-white rounded-xl shadow-md transition-all cursor-pointer " + (variant === 'danger' ? 'bg-rose-600 hover:bg-rose-500 active:bg-rose-700 shadow-rose-950/50' : 'bg-violet-600 hover:bg-violet-500 active:bg-violet-700 shadow-violet-950/50')}>
+                  {confirmLabel}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // --- NAVBAR COMPONENT ---
+      function Navbar({ activeTab, onTabChange, config }) {
+        const tabs = [
+          { id: 'comandas', label: 'Comandas', icon: Icon.Receipt },
+          { id: 'financeiro', label: 'Balanço & Lucro Real', icon: Icon.TrendingUp },
+          { id: 'gastos', label: 'Compras / Gastos', icon: Icon.ShoppingBag },
+          { id: 'fiados', label: 'Fiados por Data', icon: Icon.FileText },
+          { id: 'pagamentos', label: 'Histórico Pagamentos', icon: Icon.History },
+          { id: 'clientes', label: 'Amigos / Clientes', icon: Icon.Users },
+          { id: 'produtos', label: 'Produtos', icon: Icon.Package },
+          { id: 'supabase', label: 'Supabase', icon: Icon.Database },
+        ];
+
+        const handleDownloadHtml = () => {
+          const htmlContent = document.documentElement.outerHTML;
+          const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = 'Tablell.html';
+          a.click();
+          URL.revokeObjectURL(url);
+        };
+
+        return (
+          <header className="border-b border-[#1a2130] bg-[#0c1017] sticky top-0 z-40 backdrop-blur-md">
+            <div className="max-w-[1600px] mx-auto px-4 sm:px-6">
+              <div className="flex items-center justify-between h-16 gap-4">
+                {/* Brand */}
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-violet-600 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-violet-950/60 ring-1 ring-violet-400/30">
+                    T
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-white text-base tracking-tight">Tablell</span>
+                      <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-violet-950/80 text-violet-400 border border-violet-800/50">
+                        Pro
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 hidden sm:block">Controle de Comandas & Balanço Financeiro</p>
+                  </div>
+                </div>
+
+                {/* Right Actions */}
+                <div className="flex items-center gap-2.5">
+                  <button
+                    onClick={handleDownloadHtml}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-600 hover:bg-violet-500 active:bg-violet-700 text-white text-xs font-bold rounded-xl shadow-md shadow-violet-950/50 transition-all cursor-pointer"
+                    title="Baixar este arquivo HTML para abrir direto em qualquer navegador"
+                  >
+                    <Icon.Download className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Baixar HTML Autônomo</span>
+                  </button>
+
+                  <div className="flex items-center gap-2 bg-[#131924] border border-[#1e2638] px-3 py-1.5 rounded-xl text-xs">
+                    <span className={"w-2 h-2 rounded-full " + (config.is_connected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400')} />
+                    <span className="font-semibold text-slate-200 hidden md:inline">
+                      {config.is_connected ? 'Supabase Conectado' : 'Modo Local'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation Tabs Bar */}
+              <nav className="flex items-center gap-1 overflow-x-auto py-2 -mx-4 px-4 sm:mx-0 sm:px-0 border-t border-[#161c28]">
+                {tabs.map(t => {
+                  const TabIcon = t.icon;
+                  const isActive = activeTab === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => onTabChange(t.id)}
+                      className={"flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer " + (isActive ? 'bg-violet-600 text-white shadow-md shadow-violet-950/60' : 'text-slate-400 hover:text-slate-200 hover:bg-[#131924]') }
+                    >
+                      <TabIcon className="w-4 h-4 shrink-0" />
+                      <span>{t.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          </header>
+        );
+      }
+
+      // --- VIEW: COMANDAS ---
+      function ComandasView({ products, customers, comandaItems, onAddComandaItems, onSettleComanda }) {
+        const [selectedDate, setSelectedDate] = useState(todayStr);
+        const [selectedCustomerId, setSelectedCustomerId] = useState(customers[0]?.id || '');
+        const [draftItems, setDraftItems] = useState([]);
+        const [successFeedback, setSuccessFeedback] = useState(null);
+        const [settleModal, setSettleModal] = useState(null);
+
+        const selectedCustomer = useMemo(() => customers.find(c => c.id === selectedCustomerId) || null, [customers, selectedCustomerId]);
+
+        const customerDebts = useMemo(() => {
+          const map = {};
+          comandaItems.forEach(item => {
+            if (item.status === 'pendente') {
+              map[item.cliente_id] = (map[item.cliente_id] || 0) + item.subtotal;
+            }
+          });
+          return map;
+        }, [comandaItems]);
+
+        const pendingByDate = useMemo(() => {
+          if (!selectedCustomerId) return [];
+          const map = {};
+          comandaItems.forEach(item => {
+            if (item.cliente_id === selectedCustomerId && item.status === 'pendente') {
+              if (!map[item.data_evento]) {
+                map[item.data_evento] = { data: item.data_evento, total: 0, items: [] };
+              }
+              map[item.data_evento].total += item.subtotal;
+              map[item.data_evento].items.push(item);
+            }
+          });
+          return Object.values(map).sort((a, b) => b.data.localeCompare(a.data));
+        }, [comandaItems, selectedCustomerId]);
+
+        const accumulatedDebt = selectedCustomerId ? (customerDebts[selectedCustomerId] || 0) : 0;
+        const currentEventTotal = useMemo(() => draftItems.reduce((acc, i) => acc + i.subtotal, 0), [draftItems]);
+
+        const handleAddProductToDraft = (product) => {
+          if (!selectedCustomer) return;
+          setDraftItems(prev => {
+            const idx = prev.findIndex(i => i.produto_id === product.id);
+            if (idx >= 0) {
+              return prev.map((item, i) => i === idx ? { ...item, quantidade: item.quantidade + 1, subtotal: (item.quantidade + 1) * item.preco_unitario } : item);
+            }
+            return [...prev, {
+              produto_id: product.id,
+              produto_nome: product.nome,
+              preco_unitario: product.preco_venda,
+              preco_custo: product.preco_custo,
+              quantidade: 1,
+              subtotal: product.preco_venda,
+            }];
+          });
+        };
+
+        const updateDraftQuantity = (productId, delta) => {
+          setDraftItems(prev => prev.map(item => {
+            if (item.produto_id === productId) {
+              const newQty = item.quantidade + delta;
+              if (newQty <= 0) return null;
+              return { ...item, quantidade: newQty, subtotal: newQty * item.preco_unitario };
+            }
+            return item;
+          }).filter(Boolean));
+        };
+
+        const handleSaveAsPending = () => {
+          if (!selectedCustomer || draftItems.length === 0) return;
+          const itemsToInsert = draftItems.map(item => ({
+            id: 'cmd-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+            cliente_id: selectedCustomer.id,
+            cliente_nome: selectedCustomer.nome,
+            data_evento: selectedDate,
+            produto_id: item.produto_id,
+            produto_nome: item.produto_nome,
+            quantidade: item.quantidade,
+            preco_unitario: item.preco_unitario,
+            preco_custo: item.preco_custo,
+            subtotal: item.subtotal,
+            status: 'pendente',
+            created_at: new Date().toISOString(),
+          }));
+          onAddComandaItems(itemsToInsert);
+          setDraftItems([]);
+          setSuccessFeedback('Consumo de ' + selectedCustomer.nome + ' lançado na comanda!');
+          setTimeout(() => setSuccessFeedback(null), 3000);
+        };
+
+        const handleImmediatePayment = (method) => {
+          if (!selectedCustomer) return;
+          if (draftItems.length === 0) {
+            if (accumulatedDebt > 0) {
+              setSettleModal({
+                clienteId: selectedCustomer.id,
+                method,
+                amount: accumulatedDebt,
+                title: 'Quitar Saldo Pendente',
+                message: 'Quitar todo o saldo pendente de ' + selectedCustomer.nome + ' (' + formatCurrency(accumulatedDebt) + ') via ' + method.toUpperCase() + '?',
+              });
+            }
+            return;
+          }
+          const itemsToInsert = draftItems.map(item => ({
+            id: 'cmd-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+            cliente_id: selectedCustomer.id,
+            cliente_nome: selectedCustomer.nome,
+            data_evento: selectedDate,
+            produto_id: item.produto_id,
+            produto_nome: item.produto_nome,
+            quantidade: item.quantidade,
+            preco_unitario: item.preco_unitario,
+            preco_custo: item.preco_custo,
+            subtotal: item.subtotal,
+            status: 'pago',
+            forma_pagamento: method,
+            created_at: new Date().toISOString(),
+          }));
+          onAddComandaItems(itemsToInsert);
+          setDraftItems([]);
+          setSuccessFeedback('Venda de ' + selectedCustomer.nome + ' paga via ' + method.toUpperCase() + '!');
+          setTimeout(() => setSuccessFeedback(null), 3000);
+        };
+
+        const handleSendZap = () => {
+          if (!selectedCustomer) return;
+          let text = '*Tablell - Extrato de Consumo*\nOlá ' + selectedCustomer.nome + '! Segue o extrato da sua comanda:\n\n';
+          if (draftItems.length > 0) {
+            text += '*Consumo no Evento (' + selectedDate + '):*\n';
+            draftItems.forEach(i => text += '- ' + i.quantidade + 'x ' + i.produto_nome + ': ' + formatCurrency(i.subtotal) + '\n');
+            text += '*Subtotal do evento: ' + formatCurrency(currentEventTotal) + '*\n\n';
+          }
+          if (pendingByDate.length > 0) {
+            text += '*Pendências Anteriores:*\n';
+            pendingByDate.forEach(p => text += '📅 ' + p.data.split('-').reverse().join('/') + ': ' + formatCurrency(p.total) + '\n');
+            text += '\n';
+          }
+          const totalCobrar = currentEventTotal + accumulatedDebt;
+          text += '*TOTAL A ACERTAR: ' + formatCurrency(totalCobrar) + '*\n\nValeu pela preferência! ⚽🍻';
+          const cleanPhone = (selectedCustomer.telefone || '').replace(/\D/g, '');
+          const phoneParam = cleanPhone ? 'phone=55' + cleanPhone + '&' : '';
+          window.open('https://api.whatsapp.com/send?' + phoneParam + 'text=' + encodeURIComponent(text), '_blank');
+        };
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6">
+            {successFeedback && (
+              <div className="mb-4 p-3 bg-emerald-950/80 border border-emerald-800 text-emerald-300 rounded-xl text-xs font-semibold flex items-center gap-2">
+                <Icon.CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{successFeedback}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Left Column */}
+              <div className="lg:col-span-7 space-y-6">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">1. Data do Evento</span>
+                    <span className="text-[11px] text-slate-500">Toque para abrir a conta</span>
+                  </div>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={e => setSelectedDate(e.target.value)}
+                    className="w-full sm:w-64 px-3.5 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-slate-100 font-semibold focus:outline-none focus:border-violet-500 shadow-sm"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">2. Selecione o Amigo</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {customers.map(c => {
+                      const debt = customerDebts[c.id] || 0;
+                      const isSelected = selectedCustomerId === c.id;
+                      return (
+                        <button
+                          key={c.id}
+                          onClick={() => setSelectedCustomerId(c.id)}
+                          className={"p-3.5 rounded-xl border text-left transition-all flex items-center gap-3 cursor-pointer " + (isSelected ? 'bg-[#1a2232] border-violet-500 ring-2 ring-violet-500/40 text-white' : 'bg-[#131924] border-[#1e2638] hover:border-slate-700 text-slate-200')}
+                        >
+                          <span className="text-2xl shrink-0">{c.avatar || '😎'}</span>
+                          <div className="truncate">
+                            <p className="text-sm font-bold text-slate-100 truncate">{c.nome}</p>
+                            <p className={"text-xs font-semibold mt-0.5 " + (debt > 0 ? 'text-rose-400' : 'text-emerald-400')}>
+                              {debt > 0 ? 'Devendo ' + formatCurrency(debt) : 'Quitado'}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wide">3. Marcar Consumo</span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {products.map(prod => {
+                      const draftItem = draftItems.find(i => i.produto_id === prod.id);
+                      return (
+                        <button
+                          key={prod.id}
+                          onClick={() => handleAddProductToDraft(prod)}
+                          className="p-4 rounded-xl border border-[#1e2638] bg-[#131924] hover:border-violet-500/70 hover:bg-[#161e2c] transition-all text-left flex flex-col justify-between h-24 relative overflow-hidden active:scale-[0.98] cursor-pointer"
+                        >
+                          {draftItem && (
+                            <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-violet-600 text-white font-bold text-[11px] flex items-center justify-center font-mono">
+                              {draftItem.quantidade}
+                            </span>
+                          )}
+                          <span className="text-sm font-semibold text-slate-200 line-clamp-1">{prod.nome}</span>
+                          <span className="text-base font-bold text-violet-400 font-mono">{formatCurrency(prod.preco_venda)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Column */}
+              <div className="lg:col-span-5 bg-[#131924] border border-[#1e2638] rounded-xl p-5 shadow-sm space-y-4 sticky top-20">
+                <div className="flex items-start justify-between pb-3 border-b border-[#1e2638]">
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {selectedCustomer ? selectedCustomer.avatar + ' ' + selectedCustomer.nome : 'Selecione um amigo'}
+                    </h3>
+                    <p className="text-xs mt-0.5">
+                      <span className="text-slate-400">Saldo Acumulado: </span>
+                      <span className={"font-bold font-mono " + (accumulatedDebt > 0 ? 'text-rose-400' : 'text-emerald-400')}>
+                        {formatCurrency(accumulatedDebt)}
+                      </span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={handleSendZap}
+                      className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800/80 rounded-lg transition-colors cursor-pointer"
+                      title="Cobrar no WhatsApp"
+                    >
+                      <Icon.MessageSquare className="w-3.5 h-3.5" />
+                      <span>Zap</span>
+                    </button>
+                    <button
+                      onClick={() => setDraftItems([])}
+                      className="px-2.5 py-1 text-xs font-semibold text-slate-400 bg-slate-800 hover:bg-slate-700 hover:text-slate-200 rounded-lg transition-colors cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                {/* Marcando no Evento */}
+                <div className="space-y-2">
+                  <span className="text-xs font-bold text-violet-400 uppercase tracking-wider block">
+                    Marcando no Evento ({selectedDate.split('-').reverse().join('/')}):
+                  </span>
+                  {draftItems.length > 0 ? (
+                    <div className="divide-y divide-[#1e2638] max-h-44 overflow-y-auto pr-1">
+                      {draftItems.map(item => (
+                        <div key={item.produto_id} className="py-2 flex items-center justify-between text-xs">
+                          <div className="truncate flex-1">
+                            <p className="font-semibold text-slate-200 truncate">{item.produto_nome}</p>
+                            <p className="text-[11px] text-slate-500 font-mono">{formatCurrency(item.preco_unitario)} cada</p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 px-2">
+                            <button onClick={() => updateDraftQuantity(item.produto_id, -1)} className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 font-bold cursor-pointer">-</button>
+                            <span className="w-5 text-center font-bold text-white font-mono">{item.quantidade}</span>
+                            <button onClick={() => updateDraftQuantity(item.produto_id, 1)} className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 font-bold cursor-pointer">+</button>
+                          </div>
+                          <span className="font-bold text-white font-mono w-16 text-right">{formatCurrency(item.subtotal)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic py-1">
+                      {selectedCustomer ? 'Nenhum produto marcado. Toque nos itens ao lado.' : 'Selecione um amigo.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Extrato por Datas Pendentes */}
+                <div className="space-y-2 pt-2 border-t border-[#1e2638]">
+                  <span className="text-xs font-bold text-slate-400 uppercase tracking-wider block">Extrato por Datas Pendentes:</span>
+                  {pendingByDate.length > 0 ? (
+                    <div className="space-y-2 max-h-36 overflow-y-auto pr-1">
+                      {pendingByDate.map(p => (
+                        <div key={p.data} className="p-2.5 bg-[#0e121a] border border-[#1e2638] rounded-lg flex items-center justify-between text-xs">
+                          <div>
+                            <p className="font-semibold text-slate-300">{p.data.split('-').reverse().join('/')}</p>
+                            <p className="text-[11px] text-slate-500">{p.items.map(i => i.quantidade + 'x ' + i.produto_nome).join(', ')}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold font-mono text-rose-400">{formatCurrency(p.total)}</span>
+                            <button
+                              onClick={() => setSettleModal({
+                                clienteId: selectedCustomer.id,
+                                dataEvento: p.data,
+                                method: 'pix',
+                                amount: p.total,
+                                title: 'Quitar Consumo do Evento',
+                                message: 'Quitar o fiado de ' + p.data.split('-').reverse().join('/') + ' (' + formatCurrency(p.total) + ') de ' + selectedCustomer.nome + '?',
+                              })}
+                              className="px-2 py-0.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-semibold cursor-pointer"
+                            >
+                              Quitar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic py-1">
+                      {selectedCustomer ? 'Nenhuma pendência anterior registrada para este amigo.' : 'Selecione um amigo.'}
+                    </p>
+                  )}
+                </div>
+
+                {/* Total & Action Buttons */}
+                <div className="pt-3 border-t border-[#1e2638] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-slate-300">Valor do Evento Atual:</span>
+                    <span className="text-xl font-bold font-mono text-violet-400">{formatCurrency(currentEventTotal)}</span>
+                  </div>
+
+                  <button
+                    onClick={handleSaveAsPending}
+                    disabled={draftItems.length === 0}
+                    className={"w-full py-3 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 shadow-lg transition-all " + (draftItems.length > 0 ? 'bg-violet-600 hover:bg-violet-500 active:bg-violet-700 shadow-violet-950/60 cursor-pointer' : 'bg-violet-950/40 text-slate-500 border border-violet-900/30 cursor-not-allowed')}
+                  >
+                    <Icon.Plus className="w-4 h-4" />
+                    <span>Lançar Consumo na Data Selecionada</span>
+                  </button>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => handleImmediatePayment('pix')} className="py-2.5 rounded-lg font-bold text-xs text-white bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition-all text-center cursor-pointer">
+                      PIX
+                    </button>
+                    <button type="button" onClick={() => handleImmediatePayment('dinheiro')} className="py-2.5 rounded-lg font-bold text-xs text-white bg-blue-600 hover:bg-blue-500 active:bg-blue-700 transition-all text-center cursor-pointer">
+                      Dinheiro
+                    </button>
+                    <button type="button" onClick={() => handleImmediatePayment('cartao')} className="py-2.5 rounded-lg font-bold text-xs text-white bg-purple-600 hover:bg-purple-500 active:bg-purple-700 transition-all text-center cursor-pointer">
+                      Cartão
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <ConfirmModal
+              isOpen={Boolean(settleModal)}
+              title={settleModal?.title || 'Confirmar'}
+              message={settleModal?.message || ''}
+              confirmLabel="Sim, Confirmar"
+              cancelLabel="Cancelar"
+              variant="primary"
+              onConfirm={() => {
+                if (settleModal) {
+                  onSettleComanda(settleModal.clienteId, settleModal.dataEvento, settleModal.method);
+                  setSuccessFeedback('Recebimento registrado com sucesso!');
+                  setSettleModal(null);
+                  setTimeout(() => setSuccessFeedback(null), 3000);
+                }
+              }}
+              onCancel={() => setSettleModal(null)}
+            />
+          </div>
+        );
+      }
+
+      // --- VIEW: BALANÇO & LUCRO REAL ---
+      function LucroFinanceiroView({ products, comandaItems, expenses, payments }) {
+        const metrics = useMemo(() => {
+          let totalVendasBrutas = 0;
+          let totalCustoProdutosVendidos = 0;
+          let totalRecebido = 0;
+          let totalPendente = 0;
+
+          comandaItems.forEach(i => {
+            totalVendasBrutas += i.subtotal;
+            totalCustoProdutosVendidos += (i.preco_custo || 0) * i.quantidade;
+            if (i.status === 'pago') totalRecebido += i.subtotal;
+            else totalPendente += i.subtotal;
+          });
+
+          const totalDespesasCompras = expenses.reduce((acc, e) => acc + (Number(e.valor) || 0), 0);
+          const lucroRealContabil = totalVendasBrutas - totalDespesasCompras;
+          const margemReal = totalVendasBrutas > 0 ? (lucroRealContabil / totalVendasBrutas) * 100 : 0;
+          const lucroOperacionalBruto = totalVendasBrutas - totalCustoProdutosVendidos;
+
+          return {
+            totalVendasBrutas,
+            totalDespesasCompras,
+            lucroRealContabil,
+            margemReal,
+            lucroOperacionalBruto,
+            totalRecebido,
+            totalPendente,
+          };
+        }, [comandaItems, expenses]);
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Icon.TrendingUp className="w-5 h-5 text-violet-400" />
+                Balanço Financeiro & Lucro Líquido Real
+              </h1>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Cálculo executivo automático de receita total, compras de insumos, margem real e fiados a receber
+              </p>
+            </div>
+
+            {/* KPI Cards Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-[#131924] border border-[#1e2638] rounded-xl p-5 shadow-sm">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Faturamento Bruto Total</span>
+                <p className="text-2xl font-bold font-mono text-white mt-1">{formatCurrency(metrics.totalVendasBrutas)}</p>
+                <span className="text-[10px] text-slate-500 font-medium mt-1 block">Total comercializado em comandas</span>
+              </div>
+
+              <div className="bg-[#131924] border border-[#1e2638] rounded-xl p-5 shadow-sm">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide block">Total em Compras & Gastos</span>
+                <p className="text-2xl font-bold font-mono text-rose-400 mt-1">{formatCurrency(metrics.totalDespesasCompras)}</p>
+                <span className="text-[10px] text-slate-500 font-medium mt-1 block">Bebidas, carnes, carvão e operação</span>
+              </div>
+
+              <div className="bg-[#131924] border border-emerald-900/40 rounded-xl p-5 shadow-sm">
+                <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wide block">Lucro Líquido Real</span>
+                <p className={"text-2xl font-bold font-mono mt-1 " + (metrics.lucroRealContabil >= 0 ? 'text-emerald-400' : 'text-rose-400')}>
+                  {formatCurrency(metrics.lucroRealContabil)}
+                </p>
+                <span className="text-[10px] text-emerald-500/80 font-medium mt-1 block">
+                  Margem Líquida: {metrics.margemReal.toFixed(1)}%
+                </span>
+              </div>
+
+              <div className="bg-[#131924] border border-rose-900/40 rounded-xl p-5 shadow-sm">
+                <span className="text-[11px] font-bold text-rose-400 uppercase tracking-wide block">Total a Receber (Fiados)</span>
+                <p className="text-2xl font-bold font-mono text-rose-400 mt-1">{formatCurrency(metrics.totalPendente)}</p>
+                <span className="text-[10px] text-slate-500 font-medium mt-1 block">Já Recebido em Caixa: {formatCurrency(metrics.totalRecebido)}</span>
+              </div>
+            </div>
+
+            {/* Margins Table */}
+            <div className="bg-[#131924] border border-[#1e2638] rounded-xl p-5 shadow-sm space-y-4">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Icon.Package className="w-4 h-4 text-violet-400" />
+                Margem Unitária por Produto Cadastrado
+              </h3>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-[#0e121a] text-slate-400 uppercase font-semibold text-[10px] border-b border-[#1e2638]">
+                    <tr>
+                      <th className="py-2.5 px-3">Produto</th>
+                      <th className="py-2.5 px-3">Categoria</th>
+                      <th className="py-2.5 px-3 text-right">Preço de Custo</th>
+                      <th className="py-2.5 px-3 text-right">Preço de Venda</th>
+                      <th className="py-2.5 px-3 text-right">Lucro Bruto Unitário</th>
+                      <th className="py-2.5 px-3 text-right">Margem Bruta %</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#1e2638]">
+                    {products.map(p => {
+                      const lucroUnit = p.preco_venda - p.preco_custo;
+                      const margemBruta = p.preco_venda > 0 ? (lucroUnit / p.preco_venda) * 100 : 0;
+                      return (
+                        <tr key={p.id} className="hover:bg-[#161e2c] transition-colors">
+                          <td className="py-2.5 px-3 font-semibold text-white">{p.nome}</td>
+                          <td className="py-2.5 px-3 text-slate-400">
+                            <span className="px-2 py-0.5 rounded bg-violet-950/60 border border-violet-800/40 text-[10px] text-violet-300 font-semibold">
+                              {p.categoria || 'Geral'}
+                            </span>
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-mono text-slate-300">{formatCurrency(p.preco_custo)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono text-violet-300 font-bold">{formatCurrency(p.preco_venda)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono text-emerald-400 font-bold">+{formatCurrency(lucroUnit)}</td>
+                          <td className="py-2.5 px-3 text-right font-mono text-emerald-400 font-bold">{margemBruta.toFixed(1)}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // --- VIEW: COMPRAS & GASTOS ---
+      function ComprasGastosView({ expenses, onAddExpense, onDeleteExpense }) {
+        const [descricao, setDescricao] = useState('');
+        const [valor, setValor] = useState('');
+        const [categoria, setCategoria] = useState('Bebidas/Insumos');
+        const [deletingExpense, setDeletingExpense] = useState(null);
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          const valNum = parseFloat(valor.replace(',', '.'));
+          if (!descricao.trim() || isNaN(valNum) || valNum <= 0) return;
+
+          onAddExpense({
+            id: 'exp-' + Date.now(),
+            descricao: descricao.trim(),
+            valor: valNum,
+            data: todayStr,
+            categoria: categoria.trim() || 'Insumos',
+          });
+          setDescricao('');
+          setValor('');
+        };
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Icon.ShoppingBag className="w-5 h-5 text-violet-400" />
+                Lançar Gastos e Compras de Insumos
+              </h1>
+              <p className="text-xs text-slate-400 mt-0.5">Registro de reposições de estoque e despesas da barraca</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                required
+                placeholder="Ex: Fardo Cerveja 12un / Carvão"
+                value={descricao}
+                onChange={e => setDescricao(e.target.value)}
+                className="w-full sm:w-80 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <select
+                value={categoria}
+                onChange={e => setCategoria(e.target.value)}
+                className="w-full sm:w-44 px-3.5 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                <option value="Bebidas/Insumos">Bebidas/Insumos</option>
+                <option value="Carnes/Carvão">Carnes/Carvão</option>
+                <option value="Embalagens/Descartáveis">Embalagens/Descartáveis</option>
+                <option value="Operacional">Operacional</option>
+                <option value="Geral">Geral</option>
+              </select>
+
+              <input
+                type="text"
+                required
+                placeholder="Valor (Ex: 35.00)"
+                value={valor}
+                onChange={e => setValor(e.target.value)}
+                className="w-full sm:w-36 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <button
+                type="submit"
+                className="px-6 py-2.5 font-bold text-sm text-white bg-violet-600 hover:bg-violet-500 active:bg-violet-700 rounded-xl shadow-lg shadow-violet-950/50 transition-all cursor-pointer"
+              >
+                Lançar Gasto
+              </button>
+            </form>
+
+            <div className="space-y-3 pt-2">
+              <h3 className="text-base font-bold text-slate-200">Histórico de Compras Registradas ({expenses.length})</h3>
+              {expenses.length > 0 ? (
+                <div className="bg-[#131924] border border-[#1e2638] rounded-xl divide-y divide-[#1e2638] shadow-sm overflow-hidden">
+                  {expenses.map(exp => (
+                    <div key={exp.id} className="p-4 flex items-center justify-between hover:bg-[#161e2c] transition-colors">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-white text-sm">{exp.descricao}</p>
+                          <span className="text-[10px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/40 px-2 py-0.5 rounded-md">
+                            {exp.categoria || 'Insumos'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 font-mono mt-0.5">Data: {exp.data.split('-').reverse().join('/')}</p>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <span className="text-base font-bold font-mono text-rose-400">{formatCurrency(exp.valor)}</span>
+                        <button
+                          onClick={() => setDeletingExpense(exp)}
+                          className="p-1.5 text-slate-500 hover:text-rose-400 transition-colors rounded hover:bg-slate-800 cursor-pointer"
+                        >
+                          <Icon.Trash className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 italic">Nenhuma compra/gasto registrado ainda.</p>
+              )}
+            </div>
+
+            <ConfirmModal
+              isOpen={Boolean(deletingExpense)}
+              title="Excluir Gasto"
+              message={deletingExpense ? 'Deseja excluir "' + deletingExpense.descricao + '" no valor de ' + formatCurrency(deletingExpense.valor) + '?' : ''}
+              confirmLabel="Sim, Excluir Gasto"
+              onConfirm={() => {
+                if (deletingExpense) {
+                  onDeleteExpense(deletingExpense.id);
+                  setDeletingExpense(null);
+                }
+              }}
+              onCancel={() => setDeletingExpense(null)}
+            />
+          </div>
+        );
+      }
+
+      // --- VIEW: FIADOS POR DATA ---
+      function FiadosPorDataView({ comandaItems, customers, onSettleComanda }) {
+        const [selectedFilter, setSelectedFilter] = useState('all');
+        const [settlingCustomer, setSettlingCustomer] = useState(null);
+
+        const distinctDates = useMemo(() => {
+          const set = new Set();
+          comandaItems.forEach(i => {
+            if (i.status === 'pendente') set.add(i.data_evento);
+          });
+          return Array.from(set).sort((a, b) => b.localeCompare(a));
+        }, [comandaItems]);
+
+        const pendingByCustomer = useMemo(() => {
+          const map = {};
+          comandaItems.forEach(item => {
+            if (item.status === 'pendente') {
+              if (selectedFilter !== 'all' && item.data_evento !== selectedFilter) return;
+              if (!map[item.cliente_id]) {
+                const cust = customers.find(c => c.id === item.cliente_id);
+                map[item.cliente_id] = {
+                  cliente_id: item.cliente_id,
+                  cliente_nome: item.cliente_nome,
+                  avatar: cust?.avatar || '😎',
+                  telefone: cust?.telefone,
+                  datas: {},
+                  totalGeral: 0,
+                };
+              }
+              if (!map[item.cliente_id].datas[item.data_evento]) {
+                map[item.cliente_id].datas[item.data_evento] = { items: [], total: 0 };
+              }
+              map[item.cliente_id].datas[item.data_evento].items.push(item);
+              map[item.cliente_id].datas[item.data_evento].total += item.subtotal;
+              map[item.cliente_id].totalGeral += item.subtotal;
+            }
+          });
+          return Object.values(map).sort((a, b) => b.totalGeral - a.totalGeral);
+        }, [comandaItems, customers, selectedFilter]);
+
+        const totalAReceber = useMemo(() => pendingByCustomer.reduce((acc, c) => acc + c.totalGeral, 0), [pendingByCustomer]);
+
+        const handleSendZap = (customerName, phone, total, dateDetails) => {
+          let text = '*Tablell - Lembrete de Pagamento*\nOlá ' + customerName + '! Segue o extrato pendente:\n\n' + dateDetails + '\n*VALOR TOTAL PENDENTE: ' + formatCurrency(total) + '*\n\nPode fazer o Pix quando puder! Valeu! ⚽🍻';
+          const cleanPhone = (phone || '').replace(/\D/g, '');
+          const phoneParam = cleanPhone ? 'phone=55' + cleanPhone + '&' : '';
+          window.open('https://api.whatsapp.com/send?' + phoneParam + 'text=' + encodeURIComponent(text), '_blank');
+        };
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <Icon.FileText className="w-5 h-5 text-violet-400" />
+                  Relatório de Pendências por Evento
+                </h1>
+                <p className="text-xs text-slate-400 mt-0.5">Filtre por data para consultar o que cada amigo consumiu</p>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <select
+                  value={selectedFilter}
+                  onChange={e => setSelectedFilter(e.target.value)}
+                  className="px-3.5 py-2 bg-[#131924] border border-[#1e2638] rounded-xl text-xs font-semibold text-slate-200 focus:outline-none focus:border-violet-500 cursor-pointer"
+                >
+                  <option value="all">Todas as Datas (Acumulado)</option>
+                  {distinctDates.map(d => (
+                    <option key={d} value={d}>{d.split('-').reverse().join('/')}</option>
+                  ))}
+                </select>
+
+                <div className="bg-[#131924] border border-rose-900/40 rounded-xl px-4 py-2 text-right">
+                  <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wide block">Total a Receber</span>
+                  <span className="text-lg font-bold font-mono text-rose-400">{formatCurrency(totalAReceber)}</span>
+                </div>
+              </div>
+            </div>
+
+            {pendingByCustomer.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pendingByCustomer.map(cust => {
+                  const dateDetails = Object.entries(cust.datas)
+                    .map(([date, d]) => '📅 ' + date.split('-').reverse().join('/') + ': ' + d.items.map(i => i.quantidade + 'x ' + i.produto_nome).join(', ') + ' (' + formatCurrency(d.total) + ')')
+                    .join('\n');
+
+                  return (
+                    <div key={cust.cliente_id} className="bg-[#131924] border border-[#1e2638] rounded-xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between pb-2 border-b border-[#1e2638]">
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-2xl">{cust.avatar}</span>
+                            <div>
+                              <h4 className="text-sm font-bold text-white">{cust.cliente_nome}</h4>
+                              {cust.telefone && <p className="text-[11px] font-mono text-slate-400">{cust.telefone}</p>}
+                            </div>
+                          </div>
+                          <span className="text-base font-bold font-mono text-rose-400">{formatCurrency(cust.totalGeral)}</span>
+                        </div>
+
+                        <div className="space-y-2 pt-2">
+                          {Object.entries(cust.datas).map(([dataEvento, dataObj]) => (
+                            <div key={dataEvento} className="bg-[#0e121a] p-2.5 rounded-lg border border-[#1e2638] text-xs">
+                              <div className="flex justify-between font-semibold text-slate-300 mb-1">
+                                <span>{dataEvento.split('-').reverse().join('/')}</span>
+                                <span className="font-mono text-rose-400">{formatCurrency(dataObj.total)}</span>
+                              </div>
+                              <p className="text-[11px] text-slate-400">{dataObj.items.map(i => i.quantidade + 'x ' + i.produto_nome).join(', ')}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-[#1e2638] flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => handleSendZap(cust.cliente_nome, cust.telefone, cust.totalGeral, dateDetails)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-emerald-300 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-800/80 rounded-xl transition-colors cursor-pointer"
+                        >
+                          <Icon.MessageSquare className="w-3.5 h-3.5" />
+                          <span>Cobrar no Zap</span>
+                        </button>
+                        <button
+                          onClick={() => setSettlingCustomer({ id: cust.cliente_id, name: cust.cliente_nome, amount: cust.totalGeral })}
+                          className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-xl transition-colors cursor-pointer"
+                        >
+                          Quitar Tudo
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="py-24 text-center">
+                <p className="text-sm font-semibold text-slate-500">Nenhuma pendência encontrada para este filtro! 🎉</p>
+              </div>
+            )}
+
+            <ConfirmModal
+              isOpen={Boolean(settlingCustomer)}
+              title="Quitar Pendência"
+              message={settlingCustomer ? 'Confirmar recebimento total de ' + settlingCustomer.name + ' (' + formatCurrency(settlingCustomer.amount) + ')?' : ''}
+              confirmLabel="Confirmar Quitação"
+              variant="primary"
+              onConfirm={() => {
+                if (settlingCustomer) {
+                  onSettleComanda(settlingCustomer.id, selectedFilter === 'all' ? undefined : selectedFilter, 'pix');
+                  setSettlingCustomer(null);
+                }
+              }}
+              onCancel={() => setSettlingCustomer(null)}
+            />
+          </div>
+        );
+      }
+
+      // --- VIEW: HISTÓRICO DE PAGAMENTOS ---
+      function PagamentosView({ payments, customers, onDeletePayment }) {
+        const [selectedCustomerId, setSelectedCustomerId] = useState('all');
+        const [deletingPayment, setDeletingPayment] = useState(null);
+
+        const filteredPayments = useMemo(() => {
+          return payments.filter(p => {
+            if (selectedCustomerId === 'all') return true;
+            return p.cliente_id === selectedCustomerId;
+          });
+        }, [payments, selectedCustomerId]);
+
+        const totalArrecadado = useMemo(() => filteredPayments.reduce((acc, p) => acc + (Number(p.valor) || 0), 0), [filteredPayments]);
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                  <Icon.History className="w-5 h-5 text-violet-400" />
+                  Histórico de Pagamentos Recebidos
+                </h1>
+                <p className="text-xs text-slate-400 mt-0.5">Registro de acertos efetuados</p>
+              </div>
+
+              <select
+                value={selectedCustomerId}
+                onChange={e => setSelectedCustomerId(e.target.value)}
+                className="px-3.5 py-2 bg-[#131924] border border-[#1e2638] rounded-xl text-xs font-semibold text-slate-200 focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                <option value="all">Todos os clientes</option>
+                {customers.map(c => (
+                  <option key={c.id} value={c.id}>{c.avatar} {c.nome}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="bg-[#131924] border border-emerald-900/40 rounded-xl p-5 max-w-sm shadow-sm">
+              <span className="text-xs font-bold text-emerald-400 uppercase tracking-wide block mb-1">Total Já Arrecadado</span>
+              <p className="text-3xl font-bold text-emerald-400 font-mono">{formatCurrency(totalArrecadado)}</p>
+            </div>
+
+            {filteredPayments.length > 0 ? (
+              <div className="bg-[#131924] border border-[#1e2638] rounded-xl divide-y divide-[#1e2638] shadow-sm overflow-hidden">
+                {filteredPayments.map(p => (
+                  <div key={p.id} className="p-4 flex items-center justify-between hover:bg-[#161e2c] transition-colors text-xs">
+                    <div>
+                      <p className="text-sm font-bold text-white">{p.cliente_nome}</p>
+                      <p className="text-slate-400 mt-0.5 font-mono">
+                        {formatDate(p.data_hora)} · Forma: <strong className="text-violet-300">{formatPaymentLabel(p.forma_pagamento)}</strong>
+                        {p.data_evento && ' · Ref: ' + p.data_evento.split('-').reverse().join('/')}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <span className="text-base font-bold font-mono text-emerald-400">+{formatCurrency(p.valor)}</span>
+                      <button
+                        onClick={() => setDeletingPayment(p)}
+                        className="px-2.5 py-1 text-[11px] font-semibold text-rose-300 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/80 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Icon.RotateCcw className="w-3 h-3" />
+                        <span>Estornar</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="py-24 text-center">
+                <p className="text-xs text-slate-500 italic">Nenhum pagamento registrado ainda.</p>
+              </div>
+            )}
+
+            <ConfirmModal
+              isOpen={Boolean(deletingPayment)}
+              title="Estornar Pagamento"
+              message={deletingPayment ? 'Deseja cancelar o pagamento de ' + formatCurrency(deletingPayment.valor) + ' de ' + deletingPayment.cliente_nome + '?' : ''}
+              confirmLabel="Sim, Estornar"
+              onConfirm={() => {
+                if (deletingPayment) {
+                  onDeletePayment(deletingPayment.id);
+                  setDeletingPayment(null);
+                }
+              }}
+              onCancel={() => setDeletingPayment(null)}
+            />
+          </div>
+        );
+      }
+
+      // --- VIEW: AMIGOS / CLIENTES ---
+      function ClientesView({ customers, onSaveCustomer, onDeleteCustomer }) {
+        const [nome, setNome] = useState('');
+        const [avatar, setAvatar] = useState('😎');
+        const [telefone, setTelefone] = useState('');
+        const [editingId, setEditingId] = useState(null);
+        const [deletingCustomer, setDeletingCustomer] = useState(null);
+
+        const EMOJI_OPTIONS = ['😎', '🐮', '🍻', '⚽', '🥩', '🍺', '🧢', '🦁', '🍔', '🍕', '🏆', '🔥'];
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          if (!nome.trim()) return;
+
+          if (editingId) {
+            const existing = customers.find(c => c.id === editingId);
+            if (existing) {
+              onSaveCustomer({ ...existing, nome: nome.trim(), avatar, telefone: telefone.trim() || undefined });
+            }
+            setEditingId(null);
+          } else {
+            onSaveCustomer({
+              id: 'cust-' + Date.now(),
+              nome: nome.trim(),
+              avatar,
+              telefone: telefone.trim() || undefined,
+              data_cadastro: new Date().toISOString(),
+            });
+          }
+          setNome('');
+          setTelefone('');
+          setAvatar('😎');
+        };
+
+        const handleStartEdit = (c) => {
+          setEditingId(c.id);
+          setNome(c.nome);
+          setAvatar(c.avatar || '😎');
+          setTelefone(c.telefone || '');
+        };
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Icon.Users className="w-5 h-5 text-violet-400" />
+                Gerenciar Amigos / Clientes
+              </h1>
+              <p className="text-xs text-slate-400 mt-0.5">Cadastro para abertura de comandas e lembretes no WhatsApp</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                required
+                placeholder="Nome do amigo (ex: Bruno Silva)"
+                value={nome}
+                onChange={e => setNome(e.target.value)}
+                className="w-full sm:w-72 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <select
+                value={avatar}
+                onChange={e => setAvatar(e.target.value)}
+                className="px-3 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-lg text-white focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                {EMOJI_OPTIONS.map(em => <option key={em} value={em} className="bg-[#131924]">{em}</option>)}
+              </select>
+
+              <input
+                type="text"
+                placeholder="WhatsApp (Ex: 11987654321)"
+                value={telefone}
+                onChange={e => setTelefone(e.target.value)}
+                className="w-full sm:w-56 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <button
+                type="submit"
+                className="px-6 py-2.5 font-bold text-sm text-white bg-violet-600 hover:bg-violet-500 active:bg-violet-700 rounded-xl shadow-lg shadow-violet-950/50 transition-all cursor-pointer"
+              >
+                {editingId ? 'Salvar Alteração' : 'Adicionar Amigo'}
+              </button>
+
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => { setEditingId(null); setNome(''); setTelefone(''); setAvatar('😎'); }}
+                  className="px-4 py-2.5 text-sm font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              )}
+            </form>
+
+            <div className="space-y-3 pt-2">
+              <h3 className="text-base font-bold text-slate-200">Clientes Cadastrados ({customers.length})</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {customers.map(c => (
+                  <div key={c.id} className="bg-[#131924] border border-[#1e2638] rounded-xl p-3.5 flex items-center justify-between shadow-sm hover:border-slate-700 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{c.avatar || '😎'}</span>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">{c.nome}</h4>
+                        {c.telefone && <p className="text-[11px] font-mono text-slate-400">{c.telefone}</p>}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => handleStartEdit(c)}
+                        className="px-2.5 py-1 text-xs font-semibold text-violet-300 hover:bg-violet-950/80 border border-violet-800/60 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Icon.Edit className="w-3 h-3" />
+                        <span>Editar</span>
+                      </button>
+                      <button
+                        onClick={() => setDeletingCustomer(c)}
+                        className="px-2.5 py-1 text-xs font-semibold text-rose-400 hover:bg-rose-950/80 border border-rose-900/60 rounded-lg transition-colors flex items-center gap-1 cursor-pointer"
+                      >
+                        <Icon.Trash className="w-3 h-3" />
+                        <span>Excluir</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <ConfirmModal
+              isOpen={Boolean(deletingCustomer)}
+              title="Excluir Cliente"
+              message={deletingCustomer ? 'Deseja remover o amigo "' + deletingCustomer.nome + '"?' : ''}
+              confirmLabel="Sim, Excluir"
+              onConfirm={() => {
+                if (deletingCustomer) {
+                  onDeleteCustomer(deletingCustomer.id);
+                  setDeletingCustomer(null);
+                }
+              }}
+              onCancel={() => setDeletingCustomer(null)}
+            />
+          </div>
+        );
+      }
+
+      // --- VIEW: PRODUTOS ---
+      function ProdutosView({ products, onSaveProduct, onDeleteProduct }) {
+        const [nome, setNome] = useState('');
+        const [custo, setCusto] = useState('');
+        const [venda, setVenda] = useState('');
+        const [categoria, setCategoria] = useState('Geral');
+        const [editingId, setEditingId] = useState(null);
+        const [deletingProduct, setDeletingProduct] = useState(null);
+
+        const CATEGORIA_OPTIONS = ['Espetos', 'Bebidas', 'Salgados', 'Geral'];
+
+        const handleSubmit = (e) => {
+          e.preventDefault();
+          const custoNum = parseFloat(custo.replace(',', '.')) || 0;
+          const vendaNum = parseFloat(venda.replace(',', '.')) || 0;
+          const catFinal = categoria.trim() || 'Geral';
+          if (!nome.trim() || vendaNum <= 0) return;
+
+          if (editingId) {
+            const existing = products.find(p => p.id === editingId);
+            if (existing) {
+              onSaveProduct({ ...existing, nome: nome.trim(), preco_custo: custoNum, preco_venda: vendaNum, categoria: catFinal });
+            }
+            setEditingId(null);
+          } else {
+            onSaveProduct({
+              id: 'prod-' + Date.now(),
+              nome: nome.trim(),
+              preco_custo: custoNum,
+              preco_venda: vendaNum,
+              categoria: catFinal,
+            });
+          }
+          setNome('');
+          setCusto('');
+          setVenda('');
+          setCategoria('Geral');
+        };
+
+        const handleStartEdit = (prod) => {
+          setEditingId(prod.id);
+          setNome(prod.nome);
+          setCusto(String(prod.preco_custo));
+          setVenda(String(prod.preco_venda));
+          setCategoria(prod.categoria || 'Geral');
+        };
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Icon.Package className="w-5 h-5 text-violet-400" />
+                Gerenciar Produtos & Custo Unitário
+              </h1>
+              <p className="text-xs text-slate-400 mt-0.5">Cadastre itens para consumo rápido com margens calculadas</p>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                required
+                placeholder="Nome (Ex: Cerveja)"
+                value={nome}
+                onChange={e => setNome(e.target.value)}
+                className="w-full sm:w-60 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <select
+                value={categoria}
+                onChange={e => setCategoria(e.target.value)}
+                className="w-full sm:w-36 px-3 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-violet-500 cursor-pointer"
+              >
+                {CATEGORIA_OPTIONS.map(cat => <option key={cat} value={cat} className="bg-[#131924]">{cat}</option>)}
+              </select>
+
+              <input
+                type="text"
+                placeholder="Custo (Ex: 2.50)"
+                value={custo}
+                onChange={e => setCusto(e.target.value)}
+                className="w-full sm:w-32 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <input
+                type="text"
+                required
+                placeholder="Venda (Ex: 6.00)"
+                value={venda}
+                onChange={e => setVenda(e.target.value)}
+                className="w-full sm:w-32 px-4 py-2.5 bg-[#131924] border border-[#1e2638] rounded-xl text-sm text-white font-mono placeholder-slate-500 focus:outline-none focus:border-violet-500"
+              />
+
+              <button
+                type="submit"
+                className="px-6 py-2.5 font-bold text-sm text-white bg-violet-600 hover:bg-violet-500 active:bg-violet-700 rounded-xl shadow-lg shadow-violet-950/50 transition-all cursor-pointer"
+              >
+                {editingId ? 'Salvar Alteração' : 'Adicionar Produto'}
+              </button>
+
+              {editingId && (
+                <button
+                  type="button"
+                  onClick={() => { setEditingId(null); setNome(''); setCusto(''); setVenda(''); setCategoria('Geral'); }}
+                  className="px-4 py-2.5 text-sm font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+              )}
+            </form>
+
+            <div className="space-y-3 pt-2">
+              <h3 className="text-base font-bold text-slate-200">Produtos Cadastrados ({products.length})</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {products.map(prod => (
+                  <div key={prod.id} className="bg-[#131924] border border-[#1e2638] rounded-xl p-4 flex items-center justify-between shadow-sm hover:border-slate-700 transition-colors">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-sm font-bold text-white">{prod.nome}</h4>
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-300 bg-violet-950/60 border border-violet-800/40 px-2 py-0.5 rounded-md">
+                          <Icon.Tag className="w-2.5 h-2.5" />
+                          {prod.categoria || 'Geral'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-mono mt-1">
+                        Custo: {formatCurrency(prod.preco_custo)} | Venda: {formatCurrency(prod.preco_venda)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => handleStartEdit(prod)}
+                        className="p-2 text-slate-400 hover:text-violet-300 hover:bg-violet-950/80 border border-[#1e2638] rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Icon.Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeletingProduct(prod)}
+                        className="p-2 text-slate-400 hover:text-rose-400 hover:bg-rose-950/80 border border-[#1e2638] rounded-lg transition-colors cursor-pointer"
+                      >
+                        <Icon.Trash className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <ConfirmModal
+              isOpen={Boolean(deletingProduct)}
+              title="Remover Produto"
+              message={deletingProduct ? 'Tem certeza que deseja remover "' + deletingProduct.nome + '"?' : ''}
+              confirmLabel="Sim, Excluir Produto"
+              onConfirm={() => {
+                if (deletingProduct) {
+                  onDeleteProduct(deletingProduct.id);
+                  setDeletingProduct(null);
+                }
+              }}
+              onCancel={() => setDeletingProduct(null)}
+            />
+          </div>
+        );
+      }
+
+      // --- VIEW: SUPABASE & BACKUP ---
+      function SupabaseConfigView({ config, onSaveConfig, onDataReset }) {
+        const [url, setUrl] = useState(config.url || DEFAULT_SUPABASE_CONFIG.url);
+        const [anonKey, setAnonKey] = useState(config.anon_key || DEFAULT_SUPABASE_CONFIG.anon_key);
+        const [isTesting, setIsTesting] = useState(false);
+        const [testResult, setTestResult] = useState(null);
+        const [isSyncing, setIsSyncing] = useState(false);
+        const [syncResult, setSyncResult] = useState(null);
+        const [copiedSql, setCopiedSql] = useState(false);
+        const [showResetModal, setShowResetModal] = useState(false);
+
+        const sqlSchema = getSupabaseSQLSchema();
+
+        const handleTest = async () => {
+          setIsTesting(true);
+          setTestResult(null);
+          const res = await testConnection(url.trim(), anonKey.trim());
+          setIsTesting(false);
+          setTestResult(res);
+          if (res.success) {
+            onSaveConfig({ ...config, url: url.trim(), anon_key: anonKey.trim(), is_connected: true });
+          }
+        };
+
+        const handleSync = async () => {
+          setIsSyncing(true);
+          setSyncResult(null);
+          const res = await pushLocalDataToSupabase();
+          setIsSyncing(false);
+          setSyncResult(res);
+        };
+
+        const handleCopySql = () => {
+          navigator.clipboard.writeText(sqlSchema);
+          setCopiedSql(true);
+          setTimeout(() => setCopiedSql(false), 2000);
+        };
+
+        const handleExportBackup = () => {
+          const json = storageService.exportBackupJSON();
+          const blob = new Blob([json], { type: 'application/json' });
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = 'backup_tablell_' + todayStr + '.json';
+          a.click();
+        };
+
+        const handleImportFile = (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = ev => {
+            const ok = storageService.importBackupJSON(ev.target.result);
+            if (ok) {
+              setTestResult({ success: true, message: 'Backup restaurado com sucesso!' });
+              onDataReset();
+            } else {
+              setTestResult({ success: false, message: 'Arquivo de backup inválido.' });
+            }
+          };
+          reader.readAsText(file);
+        };
+
+        return (
+          <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-6 space-y-6">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Icon.Database className="w-5 h-5 text-violet-400" />
+                Integração Nativa com Supabase
+              </h1>
+              <p className="text-xs text-slate-400 mt-0.5">Banco de dados em nuvem com sincronização ao vivo e backup local</p>
+            </div>
+
+            <div className="bg-[#131924] border border-[#1e2638] rounded-xl p-6 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#1e2638]">
+                <div>
+                  <h3 className="text-sm font-bold text-white">Credenciais Salvas</h3>
+                  <p className="text-xs text-slate-400 font-mono mt-0.5">{url}</p>
+                </div>
+                <span className="text-xs text-emerald-400 font-mono font-semibold">Configurado no Código</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Project URL</label>
+                  <input
+                    type="text"
+                    value={url}
+                    onChange={e => setUrl(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-[#0c1017] border border-[#1e2638] rounded-xl text-xs text-slate-100 font-mono focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Publish Key (Anon Key)</label>
+                  <input
+                    type="password"
+                    value={anonKey}
+                    onChange={e => setAnonKey(e.target.value)}
+                    className="w-full px-3.5 py-2 bg-[#0c1017] border border-[#1e2638] rounded-xl text-xs text-slate-100 font-mono focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              </div>
+
+              {testResult && (
+                <div className={"p-3.5 rounded-xl text-xs flex items-start gap-2.5 border " + (testResult.success ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border-rose-800 text-rose-300')}>
+                  {testResult.success ? <Icon.CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> : <Icon.AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />}
+                  <div className="flex-1">
+                    <p className="font-bold">{testResult.success ? 'Conexão Verificada!' : 'Falha na Conexão'}</p>
+                    <p className="text-[11px] mt-0.5">{testResult.message}</p>
+                  </div>
+                </div>
+              )}
+
+              {syncResult && (
+                <div className={"p-3.5 rounded-xl text-xs flex items-start gap-2.5 border " + (syncResult.success ? 'bg-emerald-950/80 border-emerald-800 text-emerald-300' : 'bg-rose-950/80 border-rose-800 text-rose-300')}>
+                  {syncResult.success ? <Icon.CheckCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" /> : <Icon.AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />}
+                  <div className="flex-1">
+                    <p className="font-bold">{syncResult.success ? 'Sincronização Concluída' : 'Erro de Sincronização'}</p>
+                    <p className="text-[11px] mt-0.5">{syncResult.message}</p>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#1e2638]">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleTest}
+                    disabled={isTesting}
+                    className="px-4 py-2 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors border border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Icon.RefreshCw className={"w-3.5 h-3.5 " + (isTesting ? 'animate-spin text-violet-400' : '')} />
+                    <span>{isTesting ? 'Testando Conexão...' : 'Testar Conexão Supabase'}</span>
+                  </button>
+                  <button
+                    onClick={handleSync}
+                    disabled={isSyncing}
+                    className="px-5 py-2 text-xs font-bold text-white bg-violet-600 hover:bg-violet-500 rounded-xl transition-colors flex items-center gap-1.5 shadow-md shadow-violet-950/50 cursor-pointer"
+                  >
+                    <Icon.UploadCloud className={"w-3.5 h-3.5 " + (isSyncing ? 'animate-pulse' : '')} />
+                    <span>{isSyncing ? 'Sincronizando...' : 'Sincronizar Dados Agora'}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SQL Box */}
+            <div className="bg-[#131924] border border-[#1e2638] rounded-xl p-6 shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                    <Icon.Code className="w-4 h-4 text-violet-400" />
+                    Script SQL para Criação e Atualização de Tabelas
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">Execute no SQL Editor do seu Supabase para criar as tabelas</p>
+                </div>
+                <button
+                  onClick={handleCopySql}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors border border-slate-700 cursor-pointer"
+                >
+                  {copiedSql ? <Icon.Check className="w-3.5 h-3.5 text-emerald-400" /> : <Icon.Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSql ? 'Copiado!' : 'Copiar Script SQL'}</span>
+                </button>
+              </div>
+
+              <pre className="p-4 bg-[#0c1017] border border-[#1e2638] rounded-xl font-mono text-[11px] text-slate-300 overflow-x-auto max-h-56 leading-relaxed">
+                {sqlSchema}
+              </pre>
+            </div>
+
+            {/* Backup Box */}
+            <div className="bg-[#131924] border border-[#1e2638] rounded-xl p-6 shadow-sm space-y-3">
+              <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                <Icon.ShieldCheck className="w-4 h-4 text-blue-400" />
+                Backup Local & Restauração
+              </h3>
+              <p className="text-xs text-slate-400">Exporte todos os dados em arquivo JSON para guardar no seu computador</p>
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  onClick={handleExportBackup}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors border border-slate-700 cursor-pointer"
+                >
+                  <Icon.DownloadCloud className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Baixar Backup JSON</span>
+                </button>
+
+                <label className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors border border-slate-700 cursor-pointer">
+                  <Icon.UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Restaurar Backup JSON</span>
+                  <input type="file" accept=".json" onChange={handleImportFile} className="hidden" />
+                </label>
+
+                <button
+                  onClick={() => setShowResetModal(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-violet-300 hover:bg-violet-950/80 rounded-xl transition-colors ml-auto border border-violet-900/60 cursor-pointer"
+                >
+                  <Icon.RotateCcw className="w-3.5 h-3.5" />
+                  <span>Recarregar Dados Padrão</span>
+                </button>
+              </div>
+            </div>
+
+            <ConfirmModal
+              isOpen={showResetModal}
+              title="Recarregar Dados Padrão"
+              message="Deseja recarregar os dados de demonstração do Tablell? Esta ação substituirá a cópia local."
+              confirmLabel="Sim, Recarregar"
+              variant="warning"
+              onConfirm={() => {
+                storageService.resetAllToDemo();
+                onDataReset();
+                setShowResetModal(false);
+                setTestResult({ success: true, message: 'Dados padrão recarregados!' });
+              }}
+              onCancel={() => setShowResetModal(false)}
+            />
+          </div>
+        );
+      }
+
+      // --- MAIN APP COMPONENT ---
+      function App() {
+        const [activeTab, setActiveTab] = useState('comandas');
+        const [products, setProducts] = useState([]);
+        const [customers, setCustomers] = useState([]);
+        const [comandaItems, setComandaItems] = useState([]);
+        const [expenses, setExpenses] = useState([]);
+        const [payments, setPayments] = useState([]);
+        const [config, setConfig] = useState(storageService.getConfig());
+        const [isLoading, setIsLoading] = useState(true);
+        const [syncNotice, setSyncNotice] = useState(null);
+
+        const refreshLocalState = useCallback(() => {
+          setProducts(storageService.getProducts());
+          setCustomers(storageService.getCustomers());
+          setComandaItems(storageService.getComandaItems());
+          setExpenses(storageService.getExpenses());
+          setPayments(storageService.getPayments());
+          setConfig(storageService.getConfig());
+        }, []);
+
+        const loadRemoteData = useCallback(async () => {
+          setIsLoading(true);
+          const res = await pullAllFromSupabase();
+          if (res.success) {
+            refreshLocalState();
+          } else {
+            refreshLocalState();
+            pushLocalDataToSupabase().catch(() => {});
+          }
+          setIsLoading(false);
+        }, [refreshLocalState]);
+
+        useEffect(() => {
+          loadRemoteData();
+          const unsubscribe = subscribeToRealtime(() => {
+            refreshLocalState();
+          });
+          return () => {
+            if (unsubscribe) unsubscribe();
+          };
+        }, [loadRemoteData, refreshLocalState]);
+
+        // Handlers
+        const handleSaveCustomer = async (cust) => {
+          const updated = storageService.saveCustomer(cust);
+          setCustomers([...updated]);
+          const res = await upsertToSupabase('customers', cust);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        const handleDeleteCustomer = async (id) => {
+          const updated = storageService.deleteCustomer(id);
+          setCustomers([...updated]);
+          const res = await deleteFromSupabase('customers', id);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        const handleSaveProduct = async (prod) => {
+          const updated = storageService.saveProduct(prod);
+          setProducts([...updated]);
+          const res = await upsertToSupabase('products', prod);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        const handleDeleteProduct = async (id) => {
+          const updated = storageService.deleteProduct(id);
+          setProducts([...updated]);
+          const res = await deleteFromSupabase('products', id);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        const handleAddComandaItems = async (items) => {
+          const updated = storageService.addComandaItems(items);
+          setComandaItems([...updated]);
+          const res = await upsertToSupabase('comanda_items', items);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+
+          const newPayments = [];
+          items.forEach(item => {
+            if (item.status === 'pago') {
+              const p = {
+                id: 'pay-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+                cliente_id: item.cliente_id,
+                cliente_nome: item.cliente_nome,
+                data_hora: new Date().toISOString(),
+                valor: item.subtotal,
+                forma_pagamento: item.forma_pagamento || 'pix',
+                data_evento: item.data_evento,
+                observacoes: 'Pago no evento: ' + item.quantidade + 'x ' + item.produto_nome,
+              };
+              newPayments.push(p);
+              storageService.addPayment(p);
+            }
+          });
+
+          if (newPayments.length > 0) {
+            setPayments(storageService.getPayments());
+            await upsertToSupabase('payments', newPayments);
+          }
+        };
+
+        const handleSettleComanda = async (clienteId, dataEvento, method = 'pix') => {
+          const { updated } = storageService.settleComandaItems(clienteId, dataEvento, method);
+          setComandaItems([...updated]);
+          setPayments(storageService.getPayments());
+
+          const updatedPending = updated.filter(i => i.cliente_id === clienteId && i.status === 'pago');
+          if (updatedPending.length > 0) {
+            await upsertToSupabase('comanda_items', updatedPending);
+          }
+          const latestPayments = storageService.getPayments();
+          if (latestPayments.length > 0) {
+            await upsertToSupabase('payments', latestPayments[0]);
+          }
+        };
+
+        const handleAddExpense = async (exp) => {
+          const updated = storageService.addExpense(exp);
+          setExpenses([...updated]);
+          const res = await upsertToSupabase('expenses', exp);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        const handleDeleteExpense = async (id) => {
+          const updated = storageService.deleteExpense(id);
+          setExpenses([...updated]);
+          const res = await deleteFromSupabase('expenses', id);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        const handleDeletePayment = async (id) => {
+          const updated = storageService.deletePayment(id);
+          setPayments([...updated]);
+          const res = await deleteFromSupabase('payments', id);
+          if (!res.success && res.error) {
+            setSyncNotice(res.error);
+            setTimeout(() => setSyncNotice(null), 8000);
+          }
+        };
+
+        return (
+          <div className="min-h-screen bg-[#090c13] text-slate-100 flex flex-col font-sans selection:bg-violet-600 selection:text-white">
+            <Navbar activeTab={activeTab} onTabChange={setActiveTab} config={config} />
+
+            {syncNotice && (
+              <div className="bg-amber-950/90 border-b border-amber-800 text-amber-200 px-4 py-2 text-xs text-center font-mono flex items-center justify-center gap-3">
+                <span>{syncNotice}</span>
+                <button onClick={() => setSyncNotice(null)} className="px-2 py-0.5 text-[10px] font-bold text-amber-300 hover:text-white bg-amber-900/80 border border-amber-700/80 rounded cursor-pointer">
+                  ✕ Fechar
+                </button>
+              </div>
+            )}
+
+            <main className="flex-1 pb-16">
+              {activeTab === 'comandas' && (
+                <ComandasView
+                  products={products}
+                  customers={customers}
+                  comandaItems={comandaItems}
+                  onAddComandaItems={handleAddComandaItems}
+                  onSettleComanda={handleSettleComanda}
+                />
+              )}
+
+              {activeTab === 'financeiro' && (
+                <LucroFinanceiroView
+                  products={products}
+                  comandaItems={comandaItems}
+                  expenses={expenses}
+                  payments={payments}
+                />
+              )}
+
+              {activeTab === 'gastos' && (
+                <ComprasGastosView
+                  expenses={expenses}
+                  onAddExpense={handleAddExpense}
+                  onDeleteExpense={handleDeleteExpense}
+                />
+              )}
+
+              {activeTab === 'fiados' && (
+                <FiadosPorDataView
+                  comandaItems={comandaItems}
+                  customers={customers}
+                  onSettleComanda={handleSettleComanda}
+                />
+              )}
+
+              {activeTab === 'pagamentos' && (
+                <PagamentosView
+                  payments={payments}
+                  customers={customers}
+                  onDeletePayment={handleDeletePayment}
+                />
+              )}
+
+              {activeTab === 'clientes' && (
+                <ClientesView
+                  customers={customers}
+                  onSaveCustomer={handleSaveCustomer}
+                  onDeleteCustomer={handleDeleteCustomer}
+                />
+              )}
+
+              {activeTab === 'produtos' && (
+                <ProdutosView
+                  products={products}
+                  onSaveProduct={handleSaveProduct}
+                  onDeleteProduct={handleDeleteProduct}
+                />
+              )}
+
+              {activeTab === 'supabase' && (
+                <SupabaseConfigView
+                  config={config}
+                  onSaveConfig={(newConfig) => {
+                    storageService.saveConfig(newConfig);
+                    setConfig(newConfig);
+                  }}
+                  onDataReset={refreshLocalState}
+                />
+              )}
+            </main>
+
+            <footer className="border-t border-[#1a2130] bg-[#0c1017] py-3.5 px-4 sm:px-6 text-center text-xs text-slate-500">
+              <div className="max-w-[1600px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+                <p className="font-semibold text-slate-400">
+                  Tablell &middot; Gestão de Comandas, Fiados & Balanço Financeiro
+                </p>
+                <div className="flex items-center gap-3 text-slate-400 font-mono text-[11px]">
+                  <button
+                    onClick={loadRemoteData}
+                    disabled={isLoading}
+                    className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer transition-colors"
+                    title="Clique para re-sincronizar dados do Supabase"
+                  >
+                    <span className={"w-2 h-2 rounded-full " + (isLoading ? 'bg-amber-400 animate-ping' : 'bg-emerald-400 animate-pulse')} />
+                    <span>{isLoading ? 'Carregando do Supabase...' : '● Sincronizado 100% Ao Vivo (Supabase)'}</span>
+                  </button>
+                  <span>&middot;</span>
+                  <span className="text-slate-500">srfnlbapjlbijeqmndgq</span>
+                </div>
+              </div>
+            </footer>
+          </div>
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+  </body>
+</html>
